@@ -47,18 +47,26 @@ void FlutterWindow::OnDestroy() {
   Win32Window::OnDestroy();
 }
 
-LRESULT
-FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
-                              WPARAM const wparam,
-                              LPARAM const lparam) noexcept {
-  // Give Flutter, including plugins, an opportunity to handle window messages.
-  if (flutter_controller_) {
-    std::optional<LRESULT> result =
-        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
-                                                      lparam);
-    if (result) {
-      return *result;
-    }
+LRESULT 
+FlutterWindow::MessageHandler(HWND hwnd,
+                                      UINT message,
+                                      WPARAM wparam,
+                                      LPARAM lparam) noexcept {
+  if (message == WM_GETMINMAXINFO) {
+    MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lparam);
+
+    RECT rect = {0, 0, 1100, 750};
+
+    AdjustWindowRectEx(
+        &rect,
+        GetWindowLong(hwnd, GWL_STYLE),
+        FALSE,
+        GetWindowLong(hwnd, GWL_EXSTYLE));
+
+    mmi->ptMinTrackSize.x = rect.right - rect.left;
+    mmi->ptMinTrackSize.y = rect.bottom - rect.top;
+
+    return 0;
   }
 
   switch (message) {
@@ -69,3 +77,4 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
 }
+

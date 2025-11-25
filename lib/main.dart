@@ -16,27 +16,32 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Жестко задаем стартовый и минимальный размер
   const Size startSize = Size(1100, 750);
 
   WindowOptions windowOptions = const WindowOptions(
     size: startSize,
-    minimumSize: startSize, // Это важно для macOS/Windows
     center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.normal,
   );
 
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    // Явно устанавливаем минимум перед показом, чтобы заблокировать уменьшение
-    await windowManager.setMinimumSize(startSize);
+  await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
-    await windowManager.focus();
+    await windowManager.setMinimumSize(const Size(1100, 750));
+    await windowManager.setMaximumSize(Size(double.infinity, double.infinity));
+    await windowManager.setResizable(false);
+    await windowManager.setIgnoreMouseEvents(false);
+    await windowManager.setAlwaysOnTop(false);
+    Future.delayed(const Duration(milliseconds: 200), () async {
+      await windowManager.setResizable(true);
+    });
   });
 
   runApp(const NomoTimerApp());
 }
+
+
 
 class NomoTimerApp extends StatelessWidget {
   const NomoTimerApp({super.key});
@@ -59,7 +64,7 @@ class TimerHomePage extends StatefulWidget {
   State<TimerHomePage> createState() => _TimerHomePageState();
 }
 
-class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateMixin {
+class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateMixin, WindowListener {
   Timer? _timer;
   int _currentSeconds = 25 * 60;
   bool _isWorkMode = true;
@@ -86,16 +91,29 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
   void initState() {
     super.initState();
     // При старте сразу ставим правильное время
-    _currentSeconds = workDurationSeconds; 
+    _currentSeconds = workDurationSeconds;
+    windowManager.addListener(this);
   }
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _timer?.cancel();
     _taskTitleController.dispose();
     _taskDurationController.dispose();
     super.dispose();
   }
+
+  @override
+  void onWindowResize() async {
+    const Size minSize = Size(1100, 750);
+    final size = await windowManager.getSize();
+
+    if (size.width < minSize.width || size.height < minSize.height) {
+      await windowManager.setSize(minSize);
+    }
+  }
+
 
   // --- Управление временем и настройками ---
 

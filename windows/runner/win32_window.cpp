@@ -135,7 +135,8 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(),
+    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -179,6 +180,25 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_GETMINMAXINFO: {
+      MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lparam);
+
+      const int minClientWidth = 1100;
+      const int minClientHeight = 750;
+
+      RECT rect = {0, 0, minClientWidth, minClientHeight};
+
+      AdjustWindowRectEx(
+          &rect,
+          GetWindowLong(hwnd, GWL_STYLE),
+          FALSE,
+          GetWindowLong(hwnd, GWL_EXSTYLE));
+
+      mmi->ptMinTrackSize.x = rect.right - rect.left;
+      mmi->ptMinTrackSize.y = rect.bottom - rect.top;
+
+      return 0;
+    }
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -196,6 +216,20 @@ Win32Window::MessageHandler(HWND hwnd,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
       return 0;
+    }
+    case WM_SIZING: {
+      RECT* rect = reinterpret_cast<RECT*>(lparam);
+
+      const int minWidth = 1100;
+      const int minHeight = 750;
+
+      if ((rect->right - rect->left) < minWidth)
+        rect->right = rect->left + minWidth;
+
+      if ((rect->bottom - rect->top) < minHeight)
+        rect->bottom = rect->top + minHeight;
+
+      return TRUE;
     }
     case WM_SIZE: {
       RECT rect = GetClientArea();
