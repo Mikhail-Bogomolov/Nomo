@@ -41,11 +41,19 @@ class TimerHomePage extends StatefulWidget {
 
 class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateMixin {
   Timer? _timer;
-  int _currentSeconds = workDurationSeconds;
+  int _currentSeconds = 25 * 60;
   bool _isWorkMode = true;
   bool _isPaused = true;
-  bool _isInActivity = false; // Новое состояние: показываем ли активность?
+  bool _isInActivity = false;
   ActivityType? _currentActivity;
+
+  // Настройки длительности (динамические)
+  int _workMinutes = 25;
+  int _breakMinutes = 5;
+
+  // Геттеры для актуальной длительности (в секундах)
+  int get workDurationSeconds => _workMinutes * 60;
+  int get breakDurationSeconds => _breakMinutes * 60;
 
   @override
   void initState() {
@@ -114,7 +122,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     });
   }
 
-  // --- Форматирование и прогресс ---
+  // --- Вспомогательные функции ---
   String _formatTime() {
     final minutes = (_currentSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (_currentSeconds % 60).toString().padLeft(2, '0');
@@ -126,7 +134,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     return (totalDuration - _currentSeconds) / totalDuration;
   }
 
-  // --- Сборка интерфейса ---
+  // --- Сборка UI ---
   @override
   Widget build(BuildContext context) {
     final Color primaryColor = _isWorkMode ? workColor : breakColor;
@@ -136,7 +144,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
       backgroundColor: bgColor,
       body: Stack(
         children: [
-          // Лого и настройки (всегда видны, кроме активности)
+          // Лого и настройки — только на главном экране
           if (!_isInActivity)
             Positioned(
               top: 30,
@@ -158,76 +166,94 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
               ),
             ),
 
-          // Если в активности — показываем экран активности и таймер в углу
+          // Мини-таймер в правом верхнем углу — только при активности
           if (_isInActivity)
-            ..._buildActivityScreen(primaryColor),
-
-          // Главный экран (таймер + карточки)
-          if (!_isInActivity)
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Таймер
-                _buildTimerCircle(primaryColor),
-                const SizedBox(height: 30),
-                // Контролы
-                _buildControls(primaryColor),
-              ],
+            Positioned(
+              top: 30,
+              right: 40,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  _formatTime(),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: primaryColor,
+                  ),
+                ),
+              ),
             ),
 
-          // Карточки (только в режиме перерыва)
+          // Основной контент по центру
+          Center(
+            child: _isInActivity
+                ? _buildActivityContent()
+                : _buildMainTimerScreen(primaryColor),
+          ),
+
+          // Карточки активностей — только в перерыве и не в активности
           if (!_isWorkMode && !_isInActivity) _buildActivityCards(primaryColor),
         ],
       ),
     );
   }
 
-  // Экран активности + таймер в правом верхнем углу
-  List<Widget> _buildActivityScreen(Color primaryColor) {
-    return [
-      // Таймер в правом верхнем углу
-      Positioned(
-        top: 30,
-        right: 40,
-        child: GestureDetector(
-          onTap: () {
-            // По клику — выходим из активности
-            _exitActivity();
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _formatTime(),
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: primaryColor,
-              ),
-            ),
-          ),
-        ),
-      ),
-
-      // Сам экран активности
-      Center(
-        child: switch (_currentActivity) {
-          ActivityType.notes => NotesActivityScreen(onBack: _exitActivity),
-          ActivityType.music ||
-          ActivityType.humor ||
-          ActivityType.relaxation =>
-            const Center(child: Text('Эта активность пока пустая')),
-          null => const SizedBox(),
-        },
-      ),
-    ];
+  // Главный экран: таймер + настройки + кнопки
+  Widget _buildMainTimerScreen(Color primaryColor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildTimerCircle(primaryColor),
+        const SizedBox(height: 20),
+        _buildTimeSettings(primaryColor),
+        const SizedBox(height: 20),
+        _buildControls(primaryColor),
+      ],
+    );
   }
 
-  // Таймер-круг
+  // Панель настройки длительности
+  Widget _buildTimeSettings(Color primaryColor) {
+    return AnimatedOpacity(
+      opacity: _isWorkMode ? 1.0 : 0.4,
+      duration: const Duration(milliseconds: 300),
+      child: Column(
+        children: [
+          _TimeSettingRow(
+            label: 'Работа',
+            minutes: _workMinutes,
+            onIncrease: () => setState(() => _workMinutes = (_workMinutes < 60) ? _workMinutes + 5 : 60),
+            onDecrease: () => setState(() => _workMinutes = (_workMinutes > 5) ? _workMinutes - 5 : 5),
+            isActive: _isWorkMode,
+            color: primaryColor,
+          ),
+          const SizedBox(height: 12),
+          _TimeSettingRow(
+            label: 'Перерыв',
+            minutes: _breakMinutes,
+            onIncrease: () => setState(() => _breakMinutes = (_breakMinutes < 30) ? _breakMinutes + 1 : 30),
+            onDecrease: () => setState(() => _breakMinutes = (_breakMinutes > 1) ? _breakMinutes - 1 : 1),
+            isActive: !_isWorkMode,
+            color: primaryColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Круглый таймер
   Widget _buildTimerCircle(Color primaryColor) {
     return GestureDetector(
       onTap: _togglePause,
@@ -274,7 +300,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     );
   }
 
-  // Контролы
+  // Кнопки управления
   Widget _buildControls(Color primaryColor) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -303,7 +329,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     );
   }
 
-  // Карточки активностей с flip-анимацией
+  // Карточки активностей
   Widget _buildActivityCards(Color primaryColor) {
     final size = MediaQuery.of(context).size;
 
@@ -332,6 +358,17 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
           ),
       ],
     );
+  }
+
+  // Контент активности (заметки, музыка и т.д.)
+  Widget _buildActivityContent() {
+    return switch (_currentActivity) {
+      ActivityType.notes => NotesActivityScreen(onBack: _exitActivity),
+      ActivityType.music => MusicActivityScreen(onBack: _exitActivity),
+      ActivityType.humor => HumorActivityScreen(onBack: _exitActivity),
+      ActivityType.relaxation => RelaxationActivityScreen(onBack: _exitActivity),
+      null => const SizedBox(),
+    };
   }
 }
 
@@ -473,11 +510,17 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
   }
 }
 
-// Экран "Заметки"
-class NotesActivityScreen extends StatelessWidget {
+class BaseActivityScreen extends StatelessWidget {
+  final String title;
+  final Widget child;
   final VoidCallback onBack;
 
-  const NotesActivityScreen({super.key, required this.onBack});
+  const BaseActivityScreen({
+    super.key,
+    required this.title,
+    required this.child,
+    required this.onBack,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -487,34 +530,168 @@ class NotesActivityScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Заметки',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          Expanded(
-            child: TextField(
-              maxLines: null,
-              expands: true,
-              decoration: InputDecoration(
-                hintText: 'Запишите свои мысли...',
-                border: OutlineInputBorder(
+          Expanded(child: child),
+          const SizedBox(height: 20),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('Назад', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade400,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton.icon(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Назад'),
-              ),
-            ],
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _TimeSettingRow extends StatelessWidget {
+  final String label;
+  final int minutes;
+  final VoidCallback onIncrease;
+  final VoidCallback onDecrease;
+  final bool isActive;
+  final Color color;
+
+  const _TimeSettingRow({
+    required this.label,
+    required this.minutes,
+    required this.onIncrease,
+    required this.onDecrease,
+    required this.isActive,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = isActive ? color : color.withOpacity(0.5);
+    final buttonColor = isActive ? color : color.withOpacity(0.3);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('$label:', style: TextStyle(color: textColor, fontSize: 16)),
+        const SizedBox(width: 12),
+        IconButton(
+          onPressed: onDecrease,
+          icon: Icon(Icons.remove, color: buttonColor),
+          splashRadius: 20,
+        ),
+        Container(
+          width: 60,
+          alignment: Alignment.center,
+          child: Text(
+            '$minutes мин',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: onIncrease,
+          icon: Icon(Icons.add, color: buttonColor),
+          splashRadius: 20,
+        ),
+      ],
+    );
+  }
+}
+
+// Экран "Заметки"
+class NotesActivityScreen extends StatelessWidget {
+  final VoidCallback onBack;
+
+  const NotesActivityScreen({super.key, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseActivityScreen(
+      title: 'Заметки',
+      onBack: onBack,
+      child: TextField(
+        maxLines: null,
+        expands: true,
+        decoration: InputDecoration(
+          hintText: 'Запишите свои мысли...',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding: const EdgeInsets.all(16),
+        ),
+      ),
+    );
+  }
+}
+
+// Новые экраны для остальных активностей:
+class MusicActivityScreen extends StatelessWidget {
+  final VoidCallback onBack;
+  const MusicActivityScreen({super.key, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseActivityScreen(
+      title: 'Музыка',
+      onBack: onBack,
+      child: const Center(
+        child: Text(
+          '🎵 Подборка спокойной музыки\nскоро появится',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class HumorActivityScreen extends StatelessWidget {
+  final VoidCallback onBack;
+  const HumorActivityScreen({super.key, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseActivityScreen(
+      title: 'Юмор',
+      onBack: onBack,
+      child: const Center(
+        child: Text(
+          '😄 Анекдоты и мемы\nв разработке',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class RelaxationActivityScreen extends StatelessWidget {
+  final VoidCallback onBack;
+  const RelaxationActivityScreen({super.key, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseActivityScreen(
+      title: 'Релакс',
+      onBack: onBack,
+      child: const Center(
+        child: Text(
+          '🧘 Дыхательные упражнения\nи визуализации — скоро',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
       ),
     );
   }
