@@ -1,7 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:window_manager/window_manager.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'mini_timer_window.dart';
+import 'globals.dart' as globals;
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:flutter/services.dart';
 
 // Цвета и длительности
 const Color workColor = Color(0xFFF59E0B);
@@ -12,36 +20,62 @@ const Color breakBgColor = Color(0xFFF0FDF4);
 // Типы активностей
 enum ActivityType { notes, music, humor, relaxation }
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  bool isMiniWindow = false;
+  for (final arg in args) {
+    if (arg == 'mini') {
+      isMiniWindow = true;
+      break;
+    }
+    try {
+      final parsed = jsonDecode(arg);
+      if (parsed is Map && parsed['args'] is List) {
+        final argsList = parsed['args'] as List;
+        if (argsList.contains('mini')) {
+          isMiniWindow = true;
+          break;
+        }
+      }
+    } catch (e) {
+      // Если не JSON — просто пропускаем
+    }
+  }
+
+  if (isMiniWindow) {
+    _initMiniWindowHandler();
+    runApp(const MiniTimerApp());
+    return;
+  }
+
   await windowManager.ensureInitialized();
 
-  const Size startSize = Size(1100, 750);
-
   WindowOptions windowOptions = const WindowOptions(
-    size: startSize,
+    size: Size(1100, 750),
+    minimumSize: Size(1100, 750),
     center: true,
-    backgroundColor: Colors.transparent,
-    skipTaskbar: false,
-    titleBarStyle: TitleBarStyle.normal,
+    title: "Nomo Timer",
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
-    await windowManager.setMinimumSize(const Size(1100, 750));
-    await windowManager.setMaximumSize(Size(double.infinity, double.infinity));
-    await windowManager.setResizable(false);
-    await windowManager.setIgnoreMouseEvents(false);
-    await windowManager.setAlwaysOnTop(false);
-    Future.delayed(const Duration(milliseconds: 200), () async {
-      await windowManager.setResizable(true);
-    });
+    await windowManager.focus();
   });
 
   runApp(const NomoTimerApp());
 }
 
-
+void _initMiniWindowHandler() {
+  DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+    if (call.method == 'update') {
+      final data = jsonDecode(call.arguments);
+      globals.lastReceivedTime = data['time'] ?? '00:00';
+      globals.lastReceivedIsWorkMode = data['isWorkMode'] ?? true;
+      globals.updateCallback?.call(globals.lastReceivedTime, globals.lastReceivedIsWorkMode);
+    }
+  });
+}
 
 class NomoTimerApp extends StatelessWidget {
   const NomoTimerApp({super.key});
@@ -71,6 +105,30 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
   bool _isPaused = true;
   bool _isInActivity = false;
   ActivityType? _currentActivity;
+  WindowController? _miniWindow;
+  final List<Note> _notes = [];
+
+  
+  void _sendStateToMiniWindow() {
+    if (_miniWindow == null) {
+      return;
+    }
+
+    // Проверим, живо ли окно (опционально)
+    try {
+      final int miniWindowId = _miniWindow!.windowId;
+
+      final data = jsonEncode({
+        'time': _formatTime(),
+        'isWorkMode': _isWorkMode,
+        'isPaused': _isPaused,
+      });
+
+      DesktopMultiWindow.invokeMethod(miniWindowId, 'update', data);
+    } catch (e) {
+      _miniWindow = null; // <--- Обнуляем, если ошибка
+    }
+  }
 
   // контроллеры для добавления задач
   final TextEditingController _taskTitleController = TextEditingController();
@@ -90,51 +148,84 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
   @override
   void initState() {
     super.initState();
-    // При старте сразу ставим правильное время
     _currentSeconds = workDurationSeconds;
     windowManager.addListener(this);
+    _copyAssetsToAppDir();
+  }
+
+  Future<void> _copyAssetsToAppDir() async {
+    final appDir = await getApplicationSupportDirectory();
+    final audioDir = Directory('${appDir.path}/audio');
+    if (!await audioDir.exists()) {
+      await audioDir.create();
+    }
+
+    // Используем те же имена треков, что и в MusicActivityScreen
+    const trackNames = [
+      'track1.mp3',
+      'track2.mp3',
+      'track3.mp3',
+      'track4.mp3',
+      'track5.mp3',
+    ];
+
+    for (final track in trackNames) {
+      final assetPath = 'assets/audio/$track';
+      final file = File('${audioDir.path}/$track');
+      final data = await rootBundle.load(assetPath);
+      await file.writeAsBytes(data.buffer.asUint8List());
+    }
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
     _timer?.cancel();
+    _miniWindow?.close();
     _taskTitleController.dispose();
     _taskDurationController.dispose();
     super.dispose();
   }
 
-  @override
-  void onWindowResize() async {
-    const Size minSize = Size(1100, 750);
-    final size = await windowManager.getSize();
+  
 
-    if (size.width < minSize.width || size.height < minSize.height) {
-      await windowManager.setSize(minSize);
-    }
+  @override
+  void onWindowMinimize() async {
+
+    _miniWindow = await DesktopMultiWindow.createWindow(
+      jsonEncode({'args': ['mini']}), // <--- Вернули как было
+    );
+    
   }
 
+  // Добавьте метод, который будет вызываться при закрытии мини-окна
+  void _onMiniWindowClosed() {
+    print('--- Мини-окно закрыто ---');
+    _miniWindow = null; // <--- Обнуляем
+  }
+
+  @override
+  void onWindowRestore() async {
+    await windowManager.show();
+  }
 
   // --- Управление временем и настройками ---
 
-  // Логика обновления времени работы
   void _updateWorkTime(int delta) {
     setState(() {
       int newTime = _workMinutes + delta;
-      // Ограничиваем от 5 до 60 (или больше) минут
       if (newTime < 5) newTime = 5;
       if (newTime > 120) newTime = 120;
-      
+
       _workMinutes = newTime;
 
-      // ВАЖНО: Если мы сейчас в режиме работы, сразу обновляем таймер на экране
       if (_isWorkMode) {
         _currentSeconds = workDurationSeconds;
+        _sendStateToMiniWindow();
       }
     });
   }
 
-  // Логика обновления времени перерыва
   void _updateBreakTime(int delta) {
     setState(() {
       int newTime = _breakMinutes + delta;
@@ -143,9 +234,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
 
       _breakMinutes = newTime;
 
-      // ВАЖНО: Если мы сейчас в режиме перерыва, сразу обновляем таймер на экране
       if (!_isWorkMode) {
         _currentSeconds = breakDurationSeconds;
+        _sendStateToMiniWindow();
       }
     });
   }
@@ -160,6 +251,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
         _startTimerTick();
       }
     });
+    _sendStateToMiniWindow();
   }
 
   void _startTimerTick() {
@@ -168,6 +260,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
         setState(() {
           _currentSeconds--;
         });
+        _sendStateToMiniWindow();
       } else {
         _timer?.cancel();
         _switchMode();
@@ -181,15 +274,17 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
       _timer?.cancel();
       _currentSeconds = _isWorkMode ? workDurationSeconds : breakDurationSeconds;
     });
+    _sendStateToMiniWindow();
   }
 
   void _switchMode() {
     setState(() {
       _isWorkMode = !_isWorkMode;
-      _isPaused = true; // При смене режима встаем на паузу (по желанию)
+      _isPaused = true;
       _timer?.cancel();
       _currentSeconds = _isWorkMode ? workDurationSeconds : breakDurationSeconds;
     });
+    _sendStateToMiniWindow();
   }
 
   // --- Вспомогательные функции ---
@@ -249,7 +344,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
 
   int get totalTaskDuration => _tasks.fold(0, (sum, task) => sum + task.durationMinutes);
 
-  // --- UI строители ---
+  // --- UI строители (оставлены без изменений) ---
 
   Widget _buildTasksPanel(Color primaryColor) {
     return AnimatedContainer(
@@ -402,18 +497,24 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                         // Кнопки управления
                         _buildControls(primaryColor),
                         const SizedBox(height: 30),
-                        
-                        // ВАЖНО: Настройки показываем ТОЛЬКО если таймер на ПАУЗЕ
-                        // Чтобы размер не прыгал, можно использовать Visibility с maintainSize: false
-                        // или просто условный рендеринг.
+
                         if (_isPaused) ...[
-                           _buildTimeSettings(primaryColor),
+                          _buildTimeSettings(primaryColor),
+                          const SizedBox(height: 20),
+                          // Кнопка сворачивания - теперь тут
+                          FloatingActionButton(
+                            onPressed: () async {
+                              _miniWindow = await DesktopMultiWindow.createWindow(
+                                jsonEncode({'args': ['mini']}),
+                              );
+                              await _miniWindow!.setFrame(const Rect.fromLTWH(100, 100, 300, 150));
+                              await _miniWindow!.show();
+                            },
+                            backgroundColor: const Color.fromARGB(255, 254, 246, 235),
+                            child: Icon(Icons.minimize),
+                          ),
                         ] else ...[
-                           // Пустое место, чтобы кнопки не скакали, или просто ничего, если хотим минимализм
-                           // Если убрать SizedBox, контент поднимется выше. 
-                           // Оставим SizedBox той же высоты, если нужно сохранять позицию,
-                           // Но по твоему описанию "не нужно показывать", значит просто скрываем.
-                           const SizedBox(height: 90), // Примерная высота настроек, чтобы верстка не прыгала
+                          const SizedBox(height: 90),
                         ],
                       ],
                     ),
@@ -444,10 +545,11 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
               ? Center(child: _buildActivityContent())
               : _buildMainTimerScreen(primaryColor),
 
-          if (!_isWorkMode && !_isInActivity) 
+          if (!_isWorkMode && !_isInActivity && !_isTasksPanelVisible)
             _buildActivityCards(primaryColor),
         ],
       ),
+      
     );
   }
 
@@ -457,7 +559,6 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
         _TimeSettingRow(
           label: 'Работа',
           minutes: _workMinutes,
-          // Вызываем новые методы, которые сразу обновляют таймер
           onIncrease: () => _updateWorkTime(5),
           onDecrease: () => _updateWorkTime(-5),
           isActive: _isWorkMode,
@@ -467,7 +568,6 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
         _TimeSettingRow(
           label: 'Перерыв',
           minutes: _breakMinutes,
-          // Вызываем новые методы
           onIncrease: () => _updateBreakTime(1),
           onDecrease: () => _updateBreakTime(-1),
           isActive: !_isWorkMode,
@@ -527,7 +627,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
               ),
             ),
           ),
-          
+
           Positioned(
             top: 0,
             right: 10,
@@ -550,7 +650,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                     ],
                   ),
                   child: Icon(
-                    Icons.assignment, 
+                    Icons.assignment,
                     color: primaryColor,
                     size: 24,
                   ),
@@ -623,7 +723,17 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
 
   Widget _buildActivityContent() {
     return switch (_currentActivity) {
-      ActivityType.notes => NotesActivityScreen(onBack: _exitActivity),
+      ActivityType.notes => NotesActivityScreen(
+        onBack: _exitActivity,
+        notes: _notes, // <-- Передаём заметки
+        onSaveNote: (title, content) {
+          if (title.trim().isNotEmpty && content.trim().isNotEmpty) {
+            setState(() {
+              _notes.add(Note(title: title, content: content));
+            });
+          }
+        },
+      ),
       ActivityType.music => MusicActivityScreen(onBack: _exitActivity),
       ActivityType.humor => HumorActivityScreen(onBack: _exitActivity),
       ActivityType.relaxation => RelaxationActivityScreen(onBack: _exitActivity),
@@ -636,7 +746,7 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
 
 class Task {
   final String title;
-  final int durationMinutes; 
+  final int durationMinutes;
   bool isCompleted;
 
   Task({required this.title, required this.durationMinutes, this.isCompleted = false});
@@ -792,25 +902,124 @@ class _TimeSettingRow extends StatelessWidget {
   }
 }
 
-class NotesActivityScreen extends StatelessWidget {
+class NotesActivityScreen extends StatefulWidget {
   final VoidCallback onBack;
-  const NotesActivityScreen({super.key, required this.onBack});
+  final List<Note> notes; // <-- Принимаем список заметок
+  final Function(String, String) onSaveNote; // <-- Функция сохранения
+
+  const NotesActivityScreen({
+    super.key,
+    required this.onBack,
+    required this.notes,
+    required this.onSaveNote
+  });
+
+  @override
+  State<NotesActivityScreen> createState() => _NotesActivityScreenState();
+}
+
+class _NotesActivityScreenState extends State<NotesActivityScreen> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+
   @override
   Widget build(BuildContext context) {
-    return BaseActivityScreen(
-      title: 'Заметки', onBack: onBack,
-      child: TextField(maxLines: null, expands: true, decoration: InputDecoration(hintText: 'Запишите свои мысли...', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), contentPadding: const EdgeInsets.all(16))),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Заметки', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          
+          // Поля для новой заметки
+          TextField(
+            controller: _titleController,
+            decoration: const InputDecoration(
+              labelText: 'Заголовок',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: TextField(
+              controller: _contentController,
+              maxLines: null,
+              expands: true,
+              decoration: const InputDecoration(
+                labelText: 'Текст заметки',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  widget.onSaveNote(_titleController.text, _contentController.text);
+                  _titleController.clear();
+                  _contentController.clear();
+                },
+                icon: const Icon(Icons.save),
+                label: const Text('Сохранить'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade400,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton.icon(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Назад'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          
+          // Список сохранённых заметок
+          const Text('Сохранённые заметки:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: widget.notes.isEmpty
+                ? const Center(child: Text('Пока нет заметок'))
+                : ListView.builder(
+                    itemCount: widget.notes.length,
+                    itemBuilder: (context, index) {
+                      final note = widget.notes[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text(note.title),
+                          // Убираем subtitle с содержимым
+                          onTap: () {
+                            _titleController.text = note.title;
+                            _contentController.text = note.content; // <-- При клике подгружаем полный текст
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    super.dispose();
   }
 }
 
-class MusicActivityScreen extends StatelessWidget {
+class MusicActivityScreen extends StatefulWidget {
   final VoidCallback onBack;
   const MusicActivityScreen({super.key, required this.onBack});
+
   @override
-  Widget build(BuildContext context) {
-    return BaseActivityScreen(title: 'Музыка', onBack: onBack, child: const Center(child: Text('🎵 Подборка спокойной музыки\nскоро появится', textAlign: TextAlign.center, style: TextStyle(fontSize: 18))));
-  }
+  State<MusicActivityScreen> createState() => _MusicActivityScreenState();
 }
 
 class HumorActivityScreen extends StatelessWidget {
@@ -828,5 +1037,118 @@ class RelaxationActivityScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BaseActivityScreen(title: 'Релакс', onBack: onBack, child: const Center(child: Text('🧘 Дыхательные упражнения\nи визуализации — скоро', textAlign: TextAlign.center, style: TextStyle(fontSize: 18))));
+  }
+}
+
+class Note {
+  final String title;
+  final String content;
+  final DateTime timestamp;
+
+  Note({required this.title, required this.content, DateTime? timestamp}) 
+      : timestamp = timestamp ?? DateTime.now();
+}
+
+class _MusicActivityScreenState extends State<MusicActivityScreen> {
+  final AudioPlayer _player = AudioPlayer();
+  int? _currentlyPlayingIndex;
+
+  // Используем имена файлов без префикса
+  final List<String> _trackNames = [
+    'track1.mp3',
+    'track2.mp3',
+    'track3.mp3',
+    'track4.mp3',
+    'track5.mp3',
+  ];
+
+  // Полный путь к аудио будет: assets/audio/track1.mp3
+
+  Future<void> _playTrack(int index) async {
+    try {
+      await _player.stop();
+      // Получаем путь к директории assets/audio/
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/audio/${_trackNames[index]}');
+      
+      if (await file.exists()) {
+        await _player.setSourceUrl(file.path);
+        await _player.resume();
+        setState(() {
+          _currentlyPlayingIndex = index;
+        });
+      } else {
+        print('Файл не найден: ${file.path}');
+      }
+    } catch (e) {
+      print('Ошибка воспроизведения: $e');
+    }
+  }
+
+  Future<void> _stopPlayback() async {
+    await _player.stop();
+    setState(() {
+      _currentlyPlayingIndex = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Музыка', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          
+          Expanded(
+            child: ListView.builder(
+              itemCount: _trackNames.length,
+              itemBuilder: (context, index) {
+                final trackName = 'Трек ${index + 1}';
+                final isPlaying = _currentlyPlayingIndex == index;
+
+                return Card(
+                  child: ListTile(
+                    title: Text(trackName),
+                    trailing: isPlaying 
+                        ? IconButton(
+                            icon: const Icon(Icons.stop),
+                            onPressed: _stopPlayback,
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.play_arrow),
+                            onPressed: () => _playTrack(index),
+                          ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: widget.onBack,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('Назад', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade400,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
   }
 }
