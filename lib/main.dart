@@ -1153,20 +1153,140 @@ class MusicActivityScreen extends StatefulWidget {
   State<MusicActivityScreen> createState() => _MusicActivityScreenState();
 }
 
-class HumorActivityScreen extends StatelessWidget {
+class HumorActivityScreen extends StatefulWidget {
   final VoidCallback onBack;
   const HumorActivityScreen({super.key, required this.onBack});
+
+  @override
+  State<HumorActivityScreen> createState() => _HumorActivityScreenState();
+}
+
+class _HumorActivityScreenState extends State<HumorActivityScreen> {
+  final List<String> _imagePaths = [
+    'assets/pictures/p1.png',
+    'assets/pictures/p2.png',
+    'assets/pictures/p3.png',
+  ];
+  
+  late int _currentIndex;
+  final math.Random _random = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    // Показываем рандомную картинку при открытии
+    _currentIndex = _random.nextInt(_imagePaths.length);
+  }
+
+  void _nextImage() {
+    setState(() {
+      _currentIndex = (_currentIndex + 1) % _imagePaths.length;
+    });
+  }
+
+  void _previousImage() {
+    setState(() {
+      _currentIndex = (_currentIndex - 1 + _imagePaths.length) % _imagePaths.length;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return BaseActivityScreen(
       title: 'Юмор',
-      onBack: onBack,
-      child: const Center(
-        child: Text(
-          '😄 Анекдоты и мемы\nв разработке',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18),
-        ),
+      onBack: widget.onBack,
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity! > 0) {
+                    // Свайп вправо - предыдущая картинка
+                    _previousImage();
+                  } else if (details.primaryVelocity! < 0) {
+                    // Свайп влево - следующая картинка
+                    _nextImage();
+                  }
+                },
+                child: Container(
+                  constraints: const BoxConstraints(
+                    maxWidth: 800,
+                    maxHeight: 600,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      _imagePaths[_currentIndex],
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          padding: const EdgeInsets.all(20),
+                          child: const Center(
+                            child: Text(
+                              'Ошибка загрузки изображения',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Кнопки навигации
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: _previousImage,
+                icon: const Icon(Icons.arrow_back_ios),
+                iconSize: 32,
+                color: Colors.orange.shade400,
+                tooltip: 'Предыдущая',
+              ),
+              const SizedBox(width: 20),
+              Text(
+                '${_currentIndex + 1} / ${_imagePaths.length}',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 20),
+              IconButton(
+                onPressed: _nextImage,
+                icon: const Icon(Icons.arrow_forward_ios),
+                iconSize: 32,
+                color: Colors.orange.shade400,
+                tooltip: 'Следующая',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Свайп влево/вправо для навигации',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
       ),
     );
   }
