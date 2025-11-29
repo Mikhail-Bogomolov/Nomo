@@ -96,6 +96,9 @@ void _initMiniWindowHandler() {
         globals.lastReceivedTime,
         globals.lastReceivedIsWorkMode,
       );
+    } else if (call.method == 'setAlwaysOnTop') {
+      // Обработчик для установки always on top (если нужен)
+      // Реальная установка происходит в мини-окне через window_manager
     }
   });
 }
@@ -634,6 +637,16 @@ class _TimerHomePageState extends State<TimerHomePage>
                                 const Rect.fromLTWH(100, 100, 300, 150),
                               );
                               await _miniWindow!.show();
+                              // Пытаемся установить always on top через invokeMethod
+                              try {
+                                await DesktopMultiWindow.invokeMethod(
+                                  _miniWindow!.windowId,
+                                  'setAlwaysOnTop',
+                                  'true',
+                                );
+                              } catch (e) {
+                                // Игнорируем ошибку, если метод не поддерживается
+                              }
                             },
                             backgroundColor: const Color.fromARGB(
                               255,
