@@ -72,7 +72,10 @@ void _initMiniWindowHandler() {
       final data = jsonDecode(call.arguments);
       globals.lastReceivedTime = data['time'] ?? '00:00';
       globals.lastReceivedIsWorkMode = data['isWorkMode'] ?? true;
-      globals.updateCallback?.call(globals.lastReceivedTime, globals.lastReceivedIsWorkMode);
+      globals.updateCallback?.call(
+        globals.lastReceivedTime,
+        globals.lastReceivedIsWorkMode,
+      );
     }
   });
 }
@@ -98,7 +101,8 @@ class TimerHomePage extends StatefulWidget {
   State<TimerHomePage> createState() => _TimerHomePageState();
 }
 
-class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateMixin, WindowListener {
+class _TimerHomePageState extends State<TimerHomePage>
+    with TickerProviderStateMixin, WindowListener {
   Timer? _timer;
   int _currentSeconds = 25 * 60;
   bool _isWorkMode = true;
@@ -108,7 +112,6 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
   WindowController? _miniWindow;
   final List<Note> _notes = [];
 
-  
   void _sendStateToMiniWindow() {
     if (_miniWindow == null) {
       return;
@@ -187,15 +190,13 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     super.dispose();
   }
 
-  
-
   @override
   void onWindowMinimize() async {
-
     _miniWindow = await DesktopMultiWindow.createWindow(
-      jsonEncode({'args': ['mini']}), // <--- Вернули как было
+      jsonEncode({
+        'args': ['mini'],
+      }), // <--- Вернули как было
     );
-    
   }
 
   // Добавьте метод, который будет вызываться при закрытии мини-окна
@@ -272,7 +273,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     setState(() {
       _isPaused = true;
       _timer?.cancel();
-      _currentSeconds = _isWorkMode ? workDurationSeconds : breakDurationSeconds;
+      _currentSeconds = _isWorkMode
+          ? workDurationSeconds
+          : breakDurationSeconds;
     });
     _sendStateToMiniWindow();
   }
@@ -282,7 +285,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
       _isWorkMode = !_isWorkMode;
       _isPaused = true;
       _timer?.cancel();
-      _currentSeconds = _isWorkMode ? workDurationSeconds : breakDurationSeconds;
+      _currentSeconds = _isWorkMode
+          ? workDurationSeconds
+          : breakDurationSeconds;
     });
     _sendStateToMiniWindow();
   }
@@ -295,7 +300,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
   }
 
   double _getProgress() {
-    final totalDuration = _isWorkMode ? workDurationSeconds : breakDurationSeconds;
+    final totalDuration = _isWorkMode
+        ? workDurationSeconds
+        : breakDurationSeconds;
     if (totalDuration == 0) return 0.0;
     return (totalDuration - _currentSeconds) / totalDuration;
   }
@@ -342,7 +349,8 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
     });
   }
 
-  int get totalTaskDuration => _tasks.fold(0, (sum, task) => sum + task.durationMinutes);
+  int get totalTaskDuration =>
+      _tasks.fold(0, (sum, task) => sum + task.durationMinutes);
 
   // --- UI строители (оставлены без изменений) ---
 
@@ -379,7 +387,8 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                           ),
                           const Spacer(),
                           IconButton(
-                            onPressed: () => setState(() => _isTasksPanelVisible = false),
+                            onPressed: () =>
+                                setState(() => _isTasksPanelVisible = false),
                             icon: Icon(Icons.close, color: primaryColor),
                           ),
                         ],
@@ -391,25 +400,34 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                           ? Center(
                               child: Text(
                                 'Пока нет задач',
-                                style: TextStyle(color: primaryColor.withOpacity(0.7)),
+                                style: TextStyle(
+                                  color: primaryColor.withOpacity(0.7),
+                                ),
                               ),
                             )
                           : ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
                               itemCount: _tasks.length,
                               itemBuilder: (context, index) {
                                 final task = _tasks[index];
                                 return ListTile(
                                   leading: Checkbox(
                                     value: task.isCompleted,
-                                    onChanged: (_) => _toggleTaskCompletion(index),
+                                    onChanged: (_) =>
+                                        _toggleTaskCompletion(index),
                                     activeColor: primaryColor,
                                   ),
                                   title: Text(task.title),
                                   subtitle: Text('${task.durationMinutes} мин'),
                                   trailing: IconButton(
                                     onPressed: () => _removeTask(index),
-                                    icon: Icon(Icons.delete_outline, color: Colors.grey[500]),
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.grey[500],
+                                    ),
                                   ),
                                 );
                               },
@@ -445,7 +463,10 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text('Всего: $totalTaskDuration мин', style: TextStyle(color: primaryColor)),
+                          Text(
+                            'Всего: $totalTaskDuration мин',
+                            style: TextStyle(color: primaryColor),
+                          ),
                         ],
                       ),
                     ),
@@ -504,13 +525,23 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                           // Кнопка сворачивания - теперь тут
                           FloatingActionButton(
                             onPressed: () async {
-                              _miniWindow = await DesktopMultiWindow.createWindow(
-                                jsonEncode({'args': ['mini']}),
+                              _miniWindow =
+                                  await DesktopMultiWindow.createWindow(
+                                    jsonEncode({
+                                      'args': ['mini'],
+                                    }),
+                                  );
+                              await _miniWindow!.setFrame(
+                                const Rect.fromLTWH(100, 100, 300, 150),
                               );
-                              await _miniWindow!.setFrame(const Rect.fromLTWH(100, 100, 300, 150));
                               await _miniWindow!.show();
                             },
-                            backgroundColor: const Color.fromARGB(255, 254, 246, 235),
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              254,
+                              246,
+                              235,
+                            ),
                             child: Icon(Icons.minimize),
                           ),
                         ] else ...[
@@ -549,7 +580,6 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
             _buildActivityCards(primaryColor),
         ],
       ),
-      
     );
   }
 
@@ -635,7 +665,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
               color: Colors.transparent,
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => setState(() => _isTasksPanelVisible = !_isTasksPanelVisible),
+                onTap: () => setState(
+                  () => _isTasksPanelVisible = !_isTasksPanelVisible,
+                ),
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -646,14 +678,10 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
                         color: primaryColor.withOpacity(0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
-                      )
+                      ),
                     ],
                   ),
-                  child: Icon(
-                    Icons.assignment,
-                    color: primaryColor,
-                    size: 24,
-                  ),
+                  child: Icon(Icons.assignment, color: primaryColor, size: 24),
                 ),
               ),
             ),
@@ -672,7 +700,10 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
           icon: Icon(Icons.refresh, color: primaryColor.withOpacity(0.7)),
           label: Text(
             'Сброс',
-            style: TextStyle(color: primaryColor.withOpacity(0.7), fontSize: 16),
+            style: TextStyle(
+              color: primaryColor.withOpacity(0.7),
+              fontSize: 16,
+            ),
           ),
         ),
         const SizedBox(width: 24),
@@ -680,7 +711,10 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
           onPressed: _switchMode,
           icon: Text(
             _isWorkMode ? 'На перерыв' : 'К работе',
-            style: TextStyle(color: primaryColor.withOpacity(0.7), fontSize: 16),
+            style: TextStyle(
+              color: primaryColor.withOpacity(0.7),
+              fontSize: 16,
+            ),
           ),
           label: Icon(
             _isWorkMode ? Icons.arrow_forward : Icons.arrow_back,
@@ -736,7 +770,9 @@ class _TimerHomePageState extends State<TimerHomePage> with TickerProviderStateM
       ),
       ActivityType.music => MusicActivityScreen(onBack: _exitActivity),
       ActivityType.humor => HumorActivityScreen(onBack: _exitActivity),
-      ActivityType.relaxation => RelaxationActivityScreen(onBack: _exitActivity),
+      ActivityType.relaxation => RelaxationActivityScreen(
+        onBack: _exitActivity,
+      ),
       null => const SizedBox(),
     };
   }
@@ -749,7 +785,11 @@ class Task {
   final int durationMinutes;
   bool isCompleted;
 
-  Task({required this.title, required this.durationMinutes, this.isCompleted = false});
+  Task({
+    required this.title,
+    required this.durationMinutes,
+    this.isCompleted = false,
+  });
 }
 
 class _ActivityCard extends StatefulWidget {
@@ -759,12 +799,19 @@ class _ActivityCard extends StatefulWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _ActivityCard({required this.title, required this.icon, required this.type, required this.color, required this.onTap});
+  const _ActivityCard({
+    required this.title,
+    required this.icon,
+    required this.type,
+    required this.color,
+    required this.onTap,
+  });
   @override
   State<_ActivityCard> createState() => _ActivityCardState();
 }
 
-class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderStateMixin {
+class _ActivityCardState extends State<_ActivityCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _flipAnimation;
   bool _isFlipped = false;
@@ -772,12 +819,19 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
-    _flipAnimation = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut))
-      ..addListener(() {
-        if (_flipAnimation.value >= 0.5 && !_isFlipped) setState(() => _isFlipped = true);
-        else if (_flipAnimation.value < 0.5 && _isFlipped) setState(() => _isFlipped = false);
-      });
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _flipAnimation =
+        Tween<double>(begin: 0, end: 1).animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+        )..addListener(() {
+          if (_flipAnimation.value >= 0.5 && !_isFlipped)
+            setState(() => _isFlipped = true);
+          else if (_flipAnimation.value < 0.5 && _isFlipped)
+            setState(() => _isFlipped = false);
+        });
   }
 
   @override
@@ -790,8 +844,10 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        if (_controller.isCompleted) _controller.reverse();
-        else _controller.forward().then((_) => widget.onTap());
+        if (_controller.isCompleted)
+          _controller.reverse();
+        else
+          _controller.forward().then((_) => widget.onTap());
       },
       child: AnimatedBuilder(
         animation: _flipAnimation,
@@ -800,7 +856,9 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
           final isBackVisible = angle > math.pi / 2 && angle <= 3 * math.pi / 2;
           return Transform(
             alignment: Alignment.center,
-            transform: Matrix4.identity()..setEntry(3, 2, 0.001)..rotateY(angle),
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.001)
+              ..rotateY(angle),
             child: isBackVisible ? _buildBackSide() : _buildFrontSide(),
           );
         },
@@ -810,7 +868,8 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
 
   Widget _buildFrontSide() {
     return Container(
-      width: 180, height: 120,
+      width: 180,
+      height: 120,
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(12),
@@ -821,7 +880,14 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
         children: [
           Icon(widget.icon, size: 32, color: widget.color),
           const SizedBox(height: 8),
-          Text(widget.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: widget.color)),
+          Text(
+            widget.title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: widget.color,
+            ),
+          ),
         ],
       ),
     );
@@ -829,13 +895,23 @@ class _ActivityCardState extends State<_ActivityCard> with SingleTickerProviderS
 
   Widget _buildBackSide() {
     return Container(
-      width: 180, height: 120,
+      width: 180,
+      height: 120,
       decoration: BoxDecoration(
         color: widget.color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: widget.color, width: 2),
       ),
-      child: Center(child: Text('Выбрать?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: widget.color))),
+      child: Center(
+        child: Text(
+          'Выбрать?',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: widget.color,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -844,7 +920,12 @@ class BaseActivityScreen extends StatelessWidget {
   final String title;
   final Widget child;
   final VoidCallback onBack;
-  const BaseActivityScreen({super.key, required this.title, required this.child, required this.onBack});
+  const BaseActivityScreen({
+    super.key,
+    required this.title,
+    required this.child,
+    required this.onBack,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -853,7 +934,10 @@ class BaseActivityScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 20),
           Expanded(child: child),
           const SizedBox(height: 20),
@@ -866,8 +950,13 @@ class BaseActivityScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange.shade400,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -884,7 +973,14 @@ class _TimeSettingRow extends StatelessWidget {
   final VoidCallback onDecrease;
   final bool isActive;
   final Color color;
-  const _TimeSettingRow({required this.label, required this.minutes, required this.onIncrease, required this.onDecrease, required this.isActive, required this.color});
+  const _TimeSettingRow({
+    required this.label,
+    required this.minutes,
+    required this.onIncrease,
+    required this.onDecrease,
+    required this.isActive,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -894,9 +990,34 @@ class _TimeSettingRow extends StatelessWidget {
       children: [
         Text('$label:', style: TextStyle(color: textColor, fontSize: 16)),
         const SizedBox(width: 12),
-        IconButton(onPressed: onDecrease, icon: Icon(Icons.remove, color: isActive ? color : color.withOpacity(0.3)), splashRadius: 20),
-        Container(width: 60, alignment: Alignment.center, child: Text('$minutes мин', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor))),
-        IconButton(onPressed: onIncrease, icon: Icon(Icons.add, color: isActive ? color : color.withOpacity(0.3)), splashRadius: 20),
+        IconButton(
+          onPressed: onDecrease,
+          icon: Icon(
+            Icons.remove,
+            color: isActive ? color : color.withOpacity(0.3),
+          ),
+          splashRadius: 20,
+        ),
+        Container(
+          width: 60,
+          alignment: Alignment.center,
+          child: Text(
+            '$minutes мин',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: onIncrease,
+          icon: Icon(
+            Icons.add,
+            color: isActive ? color : color.withOpacity(0.3),
+          ),
+          splashRadius: 20,
+        ),
       ],
     );
   }
@@ -911,7 +1032,7 @@ class NotesActivityScreen extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.notes,
-    required this.onSaveNote
+    required this.onSaveNote,
   });
 
   @override
@@ -929,9 +1050,12 @@ class _NotesActivityScreenState extends State<NotesActivityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Заметки', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const Text(
+            'Заметки',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 20),
-          
+
           // Поля для новой заметки
           TextField(
             controller: _titleController,
@@ -957,7 +1081,10 @@ class _NotesActivityScreenState extends State<NotesActivityScreen> {
             children: [
               ElevatedButton.icon(
                 onPressed: () {
-                  widget.onSaveNote(_titleController.text, _contentController.text);
+                  widget.onSaveNote(
+                    _titleController.text,
+                    _contentController.text,
+                  );
                   _titleController.clear();
                   _contentController.clear();
                 },
@@ -977,9 +1104,12 @@ class _NotesActivityScreenState extends State<NotesActivityScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          
+
           // Список сохранённых заметок
-          const Text('Сохранённые заметки:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const Text(
+            'Сохранённые заметки:',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 10),
           Expanded(
             child: widget.notes.isEmpty
@@ -994,7 +1124,8 @@ class _NotesActivityScreenState extends State<NotesActivityScreen> {
                           // Убираем subtitle с содержимым
                           onTap: () {
                             _titleController.text = note.title;
-                            _contentController.text = note.content; // <-- При клике подгружаем полный текст
+                            _contentController.text = note
+                                .content; // <-- При клике подгружаем полный текст
                           },
                         ),
                       );
@@ -1027,7 +1158,17 @@ class HumorActivityScreen extends StatelessWidget {
   const HumorActivityScreen({super.key, required this.onBack});
   @override
   Widget build(BuildContext context) {
-    return BaseActivityScreen(title: 'Юмор', onBack: onBack, child: const Center(child: Text('😄 Анекдоты и мемы\nв разработке', textAlign: TextAlign.center, style: TextStyle(fontSize: 18))));
+    return BaseActivityScreen(
+      title: 'Юмор',
+      onBack: onBack,
+      child: const Center(
+        child: Text(
+          '😄 Анекдоты и мемы\nв разработке',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
+    );
   }
 }
 
@@ -1036,7 +1177,17 @@ class RelaxationActivityScreen extends StatelessWidget {
   const RelaxationActivityScreen({super.key, required this.onBack});
   @override
   Widget build(BuildContext context) {
-    return BaseActivityScreen(title: 'Релакс', onBack: onBack, child: const Center(child: Text('🧘 Дыхательные упражнения\nи визуализации — скоро', textAlign: TextAlign.center, style: TextStyle(fontSize: 18))));
+    return BaseActivityScreen(
+      title: 'Релакс',
+      onBack: onBack,
+      child: const Center(
+        child: Text(
+          '🧘 Дыхательные упражнения\nи визуализации — скоро',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
+    );
   }
 }
 
@@ -1045,13 +1196,19 @@ class Note {
   final String content;
   final DateTime timestamp;
 
-  Note({required this.title, required this.content, DateTime? timestamp}) 
-      : timestamp = timestamp ?? DateTime.now();
+  Note({required this.title, required this.content, DateTime? timestamp})
+    : timestamp = timestamp ?? DateTime.now();
 }
 
 class _MusicActivityScreenState extends State<MusicActivityScreen> {
   final AudioPlayer _player = AudioPlayer();
   int? _currentlyPlayingIndex;
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
 
   // Используем имена файлов без префикса
   final List<String> _trackNames = [
@@ -1062,7 +1219,38 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
     'track5.mp3',
   ];
 
-  // Полный путь к аудио будет: assets/audio/track1.mp3
+  @override
+  void initState() {
+    super.initState();
+    _initPlayerListeners();
+  }
+
+  void _initPlayerListeners() {
+    _positionSubscription = _player.onPositionChanged.listen((position) {
+      setState(() {
+        _position = position;
+      });
+    });
+
+    _durationSubscription = _player.onDurationChanged.listen((duration) {
+      setState(() {
+        _duration = duration;
+      });
+    });
+
+    _playerStateSubscription = _player.onPlayerStateChanged.listen((state) {
+      setState(() {
+        _isPlaying = state == PlayerState.playing;
+      });
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
 
   Future<void> _playTrack(int index) async {
     try {
@@ -1070,12 +1258,13 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
       // Получаем путь к директории assets/audio/
       final dir = await getApplicationSupportDirectory();
       final file = File('${dir.path}/audio/${_trackNames[index]}');
-      
+
       if (await file.exists()) {
-        await _player.setSourceUrl(file.path);
+        await _player.setSource(DeviceFileSource(file.path));
         await _player.resume();
         setState(() {
           _currentlyPlayingIndex = index;
+          _isPlaying = true;
         });
       } else {
         print('Файл не найден: ${file.path}');
@@ -1085,10 +1274,35 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
     }
   }
 
+  Future<void> _pauseOrResume() async {
+    if (_isPlaying) {
+      await _player.pause();
+    } else {
+      await _player.resume();
+    }
+  }
+
+  Future<void> _playNext() async {
+    if (_currentlyPlayingIndex != null) {
+      final nextIndex = (_currentlyPlayingIndex! + 1) % _trackNames.length;
+      await _playTrack(nextIndex);
+    }
+  }
+
+  Future<void> _playPrevious() async {
+    if (_currentlyPlayingIndex != null) {
+      final prevIndex = (_currentlyPlayingIndex! - 1 + _trackNames.length) % _trackNames.length;
+      await _playTrack(prevIndex);
+    }
+  }
+
   Future<void> _stopPlayback() async {
     await _player.stop();
     setState(() {
       _currentlyPlayingIndex = null;
+      _isPlaying = false;
+      _position = Duration.zero;
+      _duration = Duration.zero;
     });
   }
 
@@ -1099,9 +1313,12 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Музыка', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const Text(
+            'Музыка',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 20),
-          
+
           Expanded(
             child: ListView.builder(
               itemCount: _trackNames.length,
@@ -1112,7 +1329,7 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
                 return Card(
                   child: ListTile(
                     title: Text(trackName),
-                    trailing: isPlaying 
+                    trailing: isPlaying
                         ? IconButton(
                             icon: const Icon(Icons.stop),
                             onPressed: _stopPlayback,
@@ -1126,6 +1343,83 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
               },
             ),
           ),
+
+          // Панель управления воспроизведением
+          if (_currentlyPlayingIndex != null) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                children: [
+                  // Прогресс-бар
+                  Slider(
+                    value: _duration.inMilliseconds > 0
+                        ? _position.inMilliseconds.toDouble()
+                        : 0.0,
+                    max: _duration.inMilliseconds > 0
+                        ? _duration.inMilliseconds.toDouble()
+                        : 1.0,
+                    onChanged: (value) async {
+                      await _player.seek(Duration(milliseconds: value.toInt()));
+                    },
+                  ),
+                  // Время
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatDuration(_position),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      Text(
+                        _formatDuration(_duration),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Кнопки управления
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous),
+                        iconSize: 32,
+                        onPressed: _currentlyPlayingIndex != null ? _playPrevious : null,
+                        color: Colors.orange.shade400,
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                        iconSize: 40,
+                        onPressed: _currentlyPlayingIndex != null ? _pauseOrResume : null,
+                        color: Colors.orange.shade400,
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next),
+                        iconSize: 32,
+                        onPressed: _currentlyPlayingIndex != null ? _playNext : null,
+                        color: Colors.orange.shade400,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerRight,
@@ -1136,8 +1430,13 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange.shade400,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -1148,6 +1447,9 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
 
   @override
   void dispose() {
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _playerStateSubscription?.cancel();
     _player.dispose();
     super.dispose();
   }
