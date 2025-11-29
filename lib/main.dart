@@ -45,6 +45,8 @@ Future<void> main(List<String> args) async {
 
   if (isMiniWindow) {
     _initMiniWindowHandler();
+    // Для мини-окна иконка наследуется от основного приложения
+    // или устанавливается через нативные настройки платформы
     runApp(const MiniTimerApp());
     return;
   }
@@ -54,6 +56,7 @@ Future<void> main(List<String> args) async {
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1100, 750),
     minimumSize: Size(1100, 750),
+    maximumSize: Size.infinite,
     center: true,
     title: "Nomo Timer",
   );
@@ -62,6 +65,23 @@ Future<void> main(List<String> args) async {
     await windowManager.show();
     await windowManager.focus();
   });
+
+  // Иконка установлена через нативные ресурсы Windows (app_icon.ico)
+  // Если нужно установить иконку программно, используйте ICO файл:
+  // try {
+  //   final appDir = await getApplicationSupportDirectory();
+  //   final logoFile = File('${appDir.path}/logo/logo.ico');
+  //   if (await logoFile.exists()) {
+  //     await windowManager.setIcon(logoFile.path);
+  //   }
+  // } catch (e) {
+  //   print('Ошибка установки иконки: $e');
+  // }
+
+  // Дополнительно устанавливаем минимальный размер и разрешаем изменение размера
+  await windowManager.setMinimumSize(const Size(1100, 750));
+  // Явно разрешаем изменение размера окна (максимальный размер уже установлен как infinite в WindowOptions)
+  await windowManager.setResizable(true);
 
   runApp(const NomoTimerApp());
 }
@@ -111,6 +131,7 @@ class _TimerHomePageState extends State<TimerHomePage>
   ActivityType? _currentActivity;
   WindowController? _miniWindow;
   final List<Note> _notes = [];
+  final AudioPlayer _notificationPlayer = AudioPlayer();
 
   void _sendStateToMiniWindow() {
     if (_miniWindow == null) {
@@ -127,9 +148,22 @@ class _TimerHomePageState extends State<TimerHomePage>
         'isPaused': _isPaused,
       });
 
-      DesktopMultiWindow.invokeMethod(miniWindowId, 'update', data);
+      // Вызываем асинхронно и обрабатываем ошибки
+      DesktopMultiWindow.invokeMethod(miniWindowId, 'update', data).catchError((error) {
+        // Если окно не найдено или закрыто, обнуляем ссылку
+        if (mounted) {
+          setState(() {
+            _miniWindow = null;
+          });
+        }
+      });
     } catch (e) {
-      _miniWindow = null; // <--- Обнуляем, если ошибка
+      // Если произошла ошибка при подготовке данных, обнуляем окно
+      if (mounted) {
+        setState(() {
+          _miniWindow = null;
+        });
+      }
     }
   }
 
@@ -178,6 +212,45 @@ class _TimerHomePageState extends State<TimerHomePage>
       final data = await rootBundle.load(assetPath);
       await file.writeAsBytes(data.buffer.asUint8List());
     }
+
+    // Копируем звуки оповещения (если они есть в assets)
+    const notificationSounds = [
+      'work_complete.mp3',
+      'break_complete.mp3',
+    ];
+
+    for (final sound in notificationSounds) {
+      try {
+        final assetPath = 'assets/audio/$sound';
+        final file = File('${audioDir.path}/$sound');
+        if (!await file.exists()) {
+          final data = await rootBundle.load(assetPath);
+          await file.writeAsBytes(data.buffer.asUint8List());
+        }
+      } catch (e) {
+        // Если файл не найден, пропускаем (звуки оповещения опциональны)
+      }
+    }
+  }
+
+  Future<void> _playNotificationSound(bool isWorkComplete) async {
+    try {
+      final appDir = await getApplicationSupportDirectory();
+      final soundFile = File('${appDir.path}/audio/${isWorkComplete ? 'work_complete.mp3' : 'break_complete.mp3'}');
+      
+      if (await soundFile.exists()) {
+        await _notificationPlayer.stop();
+        await _notificationPlayer.setSource(DeviceFileSource(soundFile.path));
+        await _notificationPlayer.setReleaseMode(ReleaseMode.release);
+        await _notificationPlayer.resume();
+      } else {
+        // Если файл не найден, используем системный звук или просто игнорируем
+        // Можно добавить fallback на системный звук
+      }
+    } catch (e) {
+      // Игнорируем ошибки воспроизведения звука
+      print('Ошибка воспроизведения звука оповещения: $e');
+    }
   }
 
   @override
@@ -185,6 +258,7 @@ class _TimerHomePageState extends State<TimerHomePage>
     windowManager.removeListener(this);
     _timer?.cancel();
     _miniWindow?.close();
+    _notificationPlayer.dispose();
     _taskTitleController.dispose();
     _taskDurationController.dispose();
     super.dispose();
@@ -208,6 +282,22 @@ class _TimerHomePageState extends State<TimerHomePage>
   @override
   void onWindowRestore() async {
     await windowManager.show();
+  }
+
+  @override
+  Future<bool> onWindowClose() async {
+    // Закрываем мини-окно перед закрытием основного
+    if (_miniWindow != null) {
+      try {
+        await _miniWindow!.close();
+        _miniWindow = null;
+      } catch (e) {
+        // Игнорируем ошибки при закрытии мини-окна
+        _miniWindow = null;
+      }
+    }
+    // Разрешаем закрытие основного окна
+    return true;
   }
 
   // --- Управление временем и настройками ---
@@ -264,7 +354,7 @@ class _TimerHomePageState extends State<TimerHomePage>
         _sendStateToMiniWindow();
       } else {
         _timer?.cancel();
-        _switchMode();
+        _switchMode(playSound: true); // Автоматическое завершение - воспроизводим звук
       }
     });
   }
@@ -280,7 +370,10 @@ class _TimerHomePageState extends State<TimerHomePage>
     _sendStateToMiniWindow();
   }
 
-  void _switchMode() {
+  void _switchMode({bool playSound = false}) {
+    // Определяем, какой режим закончился (до переключения)
+    final wasWorkMode = _isWorkMode;
+    
     setState(() {
       _isWorkMode = !_isWorkMode;
       _isPaused = true;
@@ -289,6 +382,12 @@ class _TimerHomePageState extends State<TimerHomePage>
           ? workDurationSeconds
           : breakDurationSeconds;
     });
+    
+    // Воспроизводим звук оповещения только при автоматическом завершении таймера
+    if (playSound) {
+      _playNotificationSound(wasWorkMode);
+    }
+    
     _sendStateToMiniWindow();
   }
 
@@ -1326,6 +1425,7 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  double _volume = 1.0; // Громкость от 0.0 до 1.0
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<PlayerState>? _playerStateSubscription;
@@ -1346,23 +1446,44 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
   }
 
   void _initPlayerListeners() {
-    _positionSubscription = _player.onPositionChanged.listen((position) {
-      setState(() {
-        _position = position;
-      });
-    });
+    _positionSubscription = _player.onPositionChanged.listen(
+      (position) {
+        if (mounted) {
+          setState(() {
+            _position = position;
+          });
+        }
+      },
+      onError: (error) {
+        // Игнорируем ошибки потока от плагина (известная проблема audioplayers)
+      },
+    );
 
-    _durationSubscription = _player.onDurationChanged.listen((duration) {
-      setState(() {
-        _duration = duration;
-      });
-    });
+    _durationSubscription = _player.onDurationChanged.listen(
+      (duration) {
+        if (mounted) {
+          setState(() {
+            _duration = duration;
+          });
+        }
+      },
+      onError: (error) {
+        // Игнорируем ошибки потока от плагина (известная проблема audioplayers)
+      },
+    );
 
-    _playerStateSubscription = _player.onPlayerStateChanged.listen((state) {
-      setState(() {
-        _isPlaying = state == PlayerState.playing;
-      });
-    });
+    _playerStateSubscription = _player.onPlayerStateChanged.listen(
+      (state) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = state == PlayerState.playing;
+          });
+        }
+      },
+      onError: (error) {
+        // Игнорируем ошибки потока от плагина (известная проблема audioplayers)
+      },
+    );
   }
 
   String _formatDuration(Duration duration) {
@@ -1381,6 +1502,7 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
 
       if (await file.exists()) {
         await _player.setSource(DeviceFileSource(file.path));
+        await _player.setVolume(_volume); // Устанавливаем громкость
         await _player.resume();
         setState(() {
           _currentlyPlayingIndex = index;
@@ -1394,10 +1516,18 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
     }
   }
 
+  Future<void> _setVolume(double volume) async {
+    setState(() {
+      _volume = volume.clamp(0.0, 1.0);
+    });
+    await _player.setVolume(_volume);
+  }
+
   Future<void> _pauseOrResume() async {
     if (_isPlaying) {
       await _player.pause();
     } else {
+      await _player.setVolume(_volume); // Убеждаемся, что громкость установлена
       await _player.resume();
     }
   }
@@ -1532,6 +1662,41 @@ class _MusicActivityScreenState extends State<MusicActivityScreen> {
                         iconSize: 32,
                         onPressed: _currentlyPlayingIndex != null ? _playNext : null,
                         color: Colors.orange.shade400,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Регулятор громкости
+                  Row(
+                    children: [
+                      Icon(
+                        _volume == 0
+                            ? Icons.volume_off
+                            : _volume < 0.5
+                                ? Icons.volume_down
+                                : Icons.volume_up,
+                        color: Colors.orange.shade400,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Slider(
+                          value: _volume,
+                          min: 0.0,
+                          max: 1.0,
+                          divisions: 100,
+                          onChanged: _setVolume,
+                          activeColor: Colors.orange.shade400,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${(_volume * 100).toInt()}%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
